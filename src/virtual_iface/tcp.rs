@@ -9,6 +9,7 @@ use crate::{tunnel, Bus};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
+use smoltcp::socket;
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     socket::tcp,
@@ -32,7 +33,7 @@ pub struct TcpVirtualInterface {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
-    sockets: SocketSet<'static>,
+    sockets: Arc<Mutex<SocketSet<'static>>>,
     iface: Option<Interface>,
 }
 
@@ -47,7 +48,7 @@ impl TcpVirtualInterface {
                 .collect(),
             source_peer_ip,
             bus,
-            sockets: SocketSet::new([]),
+            sockets: Arc::new(Mutex::new(SocketSet::new([]))),
             iface: None,
         }
     }
@@ -106,7 +107,10 @@ impl TcpVirtualInterface {
             Ok(server_socket) => {
                 // Create CIDR block for source peer IP + each port forward IP
                 let addresses = self.address(pf);
-                self.sockets.add(server_socket);
+                {
+                    let mut sockets = self.sockets.lock().await;
+                    sockets.add(server_socket);
+                }
                 self.iface.as_mut().unwrap().update_ip_addrs(|ip_addrs| {
                     addresses.into_iter().for_each(|addr| {
                         ip_addrs.push(addr).unwrap();
@@ -146,7 +150,10 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         // Create virtual server for each port forward
         for port_forward in self.port_forwards.iter() {
             let server_socket = TcpVirtualInterface::new_server_socket(*port_forward)?;
-            self.sockets.add(server_socket);
+            {
+                let mut sockets = self.sockets.lock().await;
+                sockets.add(server_socket);
+            }
         }
 
         // The next time to poll the interface. Can be None for instant poll.
@@ -158,7 +165,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         // Maps virtual port to its client socket handle
         let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
-        let mut dest_addr_local_port: Mutex<HashMap<String,u16>> = Mutex::new(HashMap::new());
+        let mut dest_addr_local_port: Mutex<HashMap<String, u16>> = Mutex::new(HashMap::new());
 
         // Data packets to send from a virtual client
         let mut send_queue: HashMap<VirtualPort, VecDeque<Bytes>> = HashMap::new();
@@ -173,52 +180,72 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             wg: Arc<WireGuardTunnel>,
             bus: Bus,
         */
+
+        tokio::task::spawn({
+            let sockets = Arc::clone(&self.sockets);
+            async move {
+
+            loop {
+                println!("Update");
+                tokio::select! {
+                    cmd = receiver.recv() => match cmd {
+                        Some(VirtualIpDeviceCommand::AddPortForwardConfig(pf)) => {
+
+                            println!("Loop Trigger");
+
+                            match dest_addr_local_port.lock().await.contains_key(&pf.destination.to_string()) {
+                                true => {
+                                    println!("Port already forwarded!");
+                                    continue;
+                                },
+                                false => println!("Port forward"),
+
+                            };
+
+                            // Virtual Setup
+                            match TcpVirtualInterface::new_server_socket(pf) {
+                                Ok(server_socket) => {
+                                    {
+                                        match sockets.try_lock() {
+                                            Ok(mut sockets) => {
+                                                sockets.add(server_socket);
+                                            },
+                                            Err(_) => {},
+                                        };
+                                    }
+                                    self.port_forwards.push(pf);
+
+                                    // Add port forward config
+                                    let source_peer_ip = self.source_peer_ip.clone();
+                                    let tcp_port_pool = tcp_port_pool.clone();
+                                    let udp_port_pool = udp_port_pool.clone();
+                                    let bus = self.bus.clone();
+                                    let wg = Arc::clone(&wg);
+
+                                    tokio::spawn(async move {
+                                        let ret = tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg, bus)
+                                            .await
+                                            .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e));
+                                        ret
+                                    });
+
+                                    println!("WORKING: {}",pf.destination.to_string());
+
+
+                                    //dest_addr_local_port.lock().await.insert(pf.destination.to_string(),pf.source.port());
+                                },
+                                Err(_) => {},
+                            };
+                        },
+                        _ => {},
+                    },
+                }
+            }
+        }
+        });
+
         loop {
             tokio::select! {
-                cmd = receiver.recv() => match cmd {
-                    Some(VirtualIpDeviceCommand::AddPortForwardConfig(pf)) => {
-
-                        println!("Loop Trigger");
-
-                        match dest_addr_local_port.lock().await.contains_key(&pf.destination.to_string()) {
-                            true => {
-                                println!("Port already forwarded!");
-                                continue;
-                            },
-                            false => println!("Port forward"),
-
-                        };
-                        
-                        // Virtual Setup
-                        match TcpVirtualInterface::new_server_socket(pf) {
-                            Ok(server_socket) => {
-                                self.sockets.add(server_socket);
-                                self.port_forwards.push(pf);
-
-                                // Add port forward config
-                                let source_peer_ip = self.source_peer_ip.clone();
-                                let tcp_port_pool = tcp_port_pool.clone();
-                                let udp_port_pool = udp_port_pool.clone();
-                                let bus = self.bus.clone();
-                                let wg = Arc::clone(&wg);
-
-                                tokio::spawn(async move {
-                                    let ret = tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg, bus)
-                                        .await
-                                        .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e));
-                                    ret
-                                });
-
-                                println!("WORKING: {}",pf.destination.to_string());
-
-
-                                //dest_addr_local_port.lock().await.insert(pf.destination.to_string(),pf.source.port());
-                            },
-                            Err(_) => {},
-                        };
-                    },
-                    _ => {},
-                },
                 _ = match (next_poll, port_client_handle_map.len()) {
                     (None, 0) => tokio::time::sleep(Duration::MAX),
                     (None, _) => tokio::time::sleep(Duration::ZERO),
@@ -228,106 +255,153 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
 
                     // Find closed sockets
                     port_client_handle_map.retain(|virtual_port, client_handle| {
-                        let client_socket = self.sockets.get_mut::<tcp::Socket>(*client_handle);
-                        if client_socket.state() == tcp::State::Closed {
-                            endpoint.send(Event::ClientConnectionDropped(*virtual_port));
-                            send_queue.remove(virtual_port);
-                            self.sockets.remove(*client_handle);
-                            false
-                        } else {
-                            // Not closed, retain
-                            true
+                        {
+                            match self.sockets.try_lock() {
+                                Ok(mut sockets) => {
+                                    let client_socket = sockets.get_mut::<tcp::Socket>(*client_handle);
+
+                                    if client_socket.state() == tcp::State::Closed {
+                                        endpoint.send(Event::ClientConnectionDropped(*virtual_port));
+                                        send_queue.remove(virtual_port);
+                                        sockets.remove(*client_handle);
+                                        false
+                                    } else {
+                                        // Not closed, retain
+                                        true
+                                    }
+                                },
+                                Err(_) => true,
+                            }
                         }
                     });
 
-                    if iface.poll(loop_start, &mut device, &mut self.sockets) {
-                        log::trace!("TCP virtual interface polled some packets to be processed");
+                    {
+                        match self.sockets.try_lock() {
+                            Ok(mut sockets) => {
+                                if iface.poll(loop_start, &mut device, &mut sockets) {
+                                    log::trace!("TCP virtual interface polled some packets to be processed");
+                                }
+                            },
+                            Err(_) => {},
+                        };
+                        
                     }
 
                     for (virtual_port, client_handle) in port_client_handle_map.iter() {
-                        let client_socket = self.sockets.get_mut::<tcp::Socket>(*client_handle);
-                        if client_socket.can_send() {
-                            if let Some(send_queue) = send_queue.get_mut(virtual_port) {
-                                let to_transfer = send_queue.pop_front();
-                                if let Some(to_transfer_slice) = to_transfer.as_deref() {
-                                    let total = to_transfer_slice.len();
-                                    match client_socket.send_slice(to_transfer_slice) {
-                                        Ok(sent) => {
-                                            if sent < total {
-                                                // Sometimes only a subset is sent, so the rest needs to be sent on the next poll
-                                                let tx_extra = Vec::from(&to_transfer_slice[sent..total]);
-                                                send_queue.push_front(tx_extra.into());
+                        {
+                            match self.sockets.try_lock() {
+                                Ok(mut sockets) => {
+                                    let client_socket = sockets.get_mut::<tcp::Socket>(*client_handle);
+                                    if client_socket.can_send() {
+                                        if let Some(send_queue) = send_queue.get_mut(virtual_port) {
+                                            let to_transfer = send_queue.pop_front();
+                                            if let Some(to_transfer_slice) = to_transfer.as_deref() {
+                                                let total = to_transfer_slice.len();
+                                                match client_socket.send_slice(to_transfer_slice) {
+                                                    Ok(sent) => {
+                                                        if sent < total {
+                                                            // Sometimes only a subset is sent, so the rest needs to be sent on the next poll
+                                                            let tx_extra = Vec::from(&to_transfer_slice[sent..total]);
+                                                            send_queue.push_front(tx_extra.into());
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        error!(
+                                                            "Failed to send slice via virtual client socket: {:?}", e
+                                                        );
+                                                    }
+                                                }
+                                            } else if client_socket.state() == tcp::State::CloseWait {
+                                                client_socket.close();
                                             }
                                         }
-                                        Err(e) => {
-                                            error!(
-                                                "Failed to send slice via virtual client socket: {:?}", e
-                                            );
+                                    }
+                                    if client_socket.can_recv() {
+                                        match client_socket.recv(|buffer| (buffer.len(), Bytes::from(buffer.to_vec()))) {
+                                            Ok(data) => {
+                                                debug!("[{}] Received {} bytes from virtual server", virtual_port, data.len());
+                                                if !data.is_empty() {
+                                                    endpoint.send(Event::RemoteData(*virtual_port, data));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "Failed to read from virtual client socket: {:?}", e
+                                                );
+                                            }
                                         }
                                     }
-                                } else if client_socket.state() == tcp::State::CloseWait {
-                                    client_socket.close();
-                                }
-                            }
-                        }
-                        if client_socket.can_recv() {
-                            match client_socket.recv(|buffer| (buffer.len(), Bytes::from(buffer.to_vec()))) {
-                                Ok(data) => {
-                                    debug!("[{}] Received {} bytes from virtual server", virtual_port, data.len());
-                                    if !data.is_empty() {
-                                        endpoint.send(Event::RemoteData(*virtual_port, data));
-                                    }
-                                }
-                                Err(e) => {
-                                    error!(
-                                        "Failed to read from virtual client socket: {:?}", e
-                                    );
-                                }
-                            }
+                                },
+                                Err(_) => {},
+                            };
+                            
                         }
                     }
 
                     // The virtual interface determines the next time to poll (this is to reduce unnecessary polls)
-                    next_poll = match iface.poll_delay(loop_start, &self.sockets) {
-                        Some(smoltcp::time::Duration::ZERO) => None,
-                        Some(delay) => {
-                            trace!("TCP Virtual interface delayed next poll by {}", delay);
-                            Some(tokio::time::Instant::now() + Duration::from_millis(delay.total_millis()))
-                        },
-                        None => None,
-                    };
+                    {
+                        match self.sockets.try_lock() {
+                            Ok(sockets) => {
+                                next_poll = match iface.poll_delay(loop_start, &sockets) {
+                                    Some(smoltcp::time::Duration::ZERO) => None,
+                                    Some(delay) => {
+                                        trace!("TCP Virtual interface delayed next poll by {}", delay);
+                                        Some(tokio::time::Instant::now() + Duration::from_millis(delay.total_millis()))
+                                    },
+                                    None => None,
+                                };
+                            },
+                            Err(_) => {},
+                        };
+                        
+                    }
                 }
                 event = endpoint.recv() => {
                     match event {
                         Event::ClientConnectionInitiated(port_forward, virtual_port) => {
-                            let client_socket = TcpVirtualInterface::new_client_socket()?;
-                            let client_handle = self.sockets.add(client_socket);
-
-                            // Add handle to map
-                            port_client_handle_map.insert(virtual_port, client_handle);
-                            send_queue.insert(virtual_port, VecDeque::new());
-
-                            let client_socket = self.sockets.get_mut::<tcp::Socket>(client_handle);
-                            let context = iface.context();
-
-                            client_socket
-                                .connect(
-                                    context,
-                                    (
-                                        IpAddress::from(port_forward.destination.ip()),
-                                        port_forward.destination.port(),
-                                    ),
-                                    (IpAddress::from(self.source_peer_ip), virtual_port.num()),
-                                )
-                                .with_context(|| "Virtual server socket failed to listen")?;
-
-                            next_poll = None;
+                            {
+                                match self.sockets.try_lock() {
+                                    Ok(mut sockets) => {
+                                        let client_socket = TcpVirtualInterface::new_client_socket()?;
+                                        let client_handle = sockets.add(client_socket);
+            
+                                        // Add handle to map
+                                        port_client_handle_map.insert(virtual_port, client_handle);
+                                        send_queue.insert(virtual_port, VecDeque::new());
+            
+                                        let client_socket = sockets.get_mut::<tcp::Socket>(client_handle);
+                                        let context = iface.context();
+            
+                                        client_socket
+                                            .connect(
+                                                context,
+                                                (
+                                                    IpAddress::from(port_forward.destination.ip()),
+                                                    port_forward.destination.port(),
+                                                ),
+                                                (IpAddress::from(self.source_peer_ip), virtual_port.num()),
+                                            )
+                                            .with_context(|| "Virtual server socket failed to listen")?;
+            
+                                        next_poll = None;
+                                    },
+                                    Err(_) => {}
+                                }
+                            }
+                            
                         }
                         Event::ClientConnectionDropped(virtual_port) => {
                             if let Some(client_handle) = port_client_handle_map.get(&virtual_port) {
-                                let client_socket = self.sockets.get_mut::<tcp::Socket>(*client_handle);
-                                client_socket.close();
-                                next_poll = None;
+                                {
+                                    match self.sockets.try_lock() {
+                                        Ok(mut sockets) => {
+                                            let client_socket = sockets.get_mut::<tcp::Socket>(*client_handle);
+                                            client_socket.close();
+                                            next_poll = None;
+                                        },
+                                        Err(_) => {},
+                                    };
+                                }
                             }
                         }
                         Event::LocalData(_, virtual_port, data) if send_queue.contains_key(&virtual_port) => {
