@@ -210,7 +210,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                 println!("WORKING: {}",pf.destination.to_string());
 
 
-                                dest_addr_local_port.lock().await.insert(pf.destination.to_string(),pf.source.port());
+                                //dest_addr_local_port.lock().await.insert(pf.destination.to_string(),pf.source.port());
                             },
                             Err(_) => {},
                         };
