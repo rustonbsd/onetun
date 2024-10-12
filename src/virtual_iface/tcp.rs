@@ -210,7 +210,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                             Ok(mut sockets) => {
                                                 sockets.add(server_socket);
                                             },
-                                            Err(_) => {},
+                                            Err(_) => {println!("LockFailed");},
                                         };
                                     }
                                     self.port_forwards.push(pf);
@@ -270,7 +270,9 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                         true
                                     }
                                 },
-                                Err(_) => true,
+                                Err(_) => { 
+                                    println!("LockFailed!");
+                                    true},
                             }
                         }
                     });
@@ -282,7 +284,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     log::trace!("TCP virtual interface polled some packets to be processed");
                                 }
                             },
-                            Err(_) => {},
+                            Err(_) => {println!("LockFailed");},
                         };
                         
                     }
