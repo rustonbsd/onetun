@@ -178,6 +178,8 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                 cmd = receiver.recv() => match cmd {
                     Some(VirtualIpDeviceCommand::AddPortForwardConfig(pf)) => {
 
+                        println!("Loop Trigger");
+
                         match dest_addr_local_port.lock().await.contains_key(&pf.destination.to_string()) {
                             true => {
                                 println!("Port already forwarded!");
