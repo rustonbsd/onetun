@@ -12,6 +12,7 @@ use std::{
 };
 
 /// A virtual device that processes IP packets through smoltcp and WireGuard.
+#[derive(Clone)]
 pub struct VirtualIpDevice {
     /// Max transmission unit (bytes)
     max_transmission_unit: usize,

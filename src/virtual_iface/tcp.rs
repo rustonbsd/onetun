@@ -1,9 +1,12 @@
 use crate::config::{PortForwardConfig, PortProtocol};
 use crate::events::Event;
+use crate::tunnel::tcp::TcpPortPool;
+use crate::tunnel::udp::UdpPortPool;
 use crate::virtual_device::VirtualIpDevice;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
-use crate::Bus;
-use anyhow::Context;
+use crate::wg::WireGuardTunnel;
+use crate::{tunnel, Bus};
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
 use smoltcp::{
@@ -12,11 +15,15 @@ use smoltcp::{
     time::Instant,
     wire::{HardwareAddress, IpAddress, IpCidr, IpVersion},
 };
+use std::sync::Arc;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::IpAddr,
     time::Duration,
 };
+use tokio::sync::{mpsc, Mutex};
+
+use super::VirtualIpDeviceCommand;
 
 const MAX_PACKET: usize = 65536;
 
@@ -26,6 +33,7 @@ pub struct TcpVirtualInterface {
     port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
     sockets: SocketSet<'static>,
+    iface: Option<Interface>,
 }
 
 impl TcpVirtualInterface {
@@ -40,6 +48,7 @@ impl TcpVirtualInterface {
             source_peer_ip,
             bus,
             sockets: SocketSet::new([]),
+            iface: None,
         }
     }
 
@@ -81,11 +90,47 @@ impl TcpVirtualInterface {
             .map(|addr| IpCidr::new(addr, addr_length(&addr)))
             .collect()
     }
+
+    fn address(&self, pf: &PortForwardConfig) -> Vec<IpCidr> {
+        let mut addresses = HashSet::new();
+        addresses.insert(IpAddress::from(self.source_peer_ip));
+        addresses.insert(IpAddress::from(pf.destination.ip()));
+        addresses
+            .into_iter()
+            .map(|addr| IpCidr::new(addr, addr_length(&addr)))
+            .collect()
+    }
+
+    async fn add_new_target(&mut self, pf: &PortForwardConfig) -> anyhow::Result<()> {
+        match TcpVirtualInterface::new_server_socket(*pf) {
+            Ok(server_socket) => {
+                // Create CIDR block for source peer IP + each port forward IP
+                let addresses = self.address(pf);
+                self.sockets.add(server_socket);
+                self.iface.as_mut().unwrap().update_ip_addrs(|ip_addrs| {
+                    addresses.into_iter().for_each(|addr| {
+                        ip_addrs.push(addr).unwrap();
+                    });
+                });
+
+                Ok(())
+            }
+            Err(_) => {
+                println!("failed to create server socker");
+                bail!("failed to create server socker");
+            }
+        }
+    }
 }
 
 #[async_trait]
 impl VirtualInterfacePoll for TcpVirtualInterface {
-    async fn poll_loop(mut self, mut device: VirtualIpDevice) -> anyhow::Result<()> {
+    async fn poll_loop(
+        mut self,
+        mut device: VirtualIpDevice,
+        mut receiver: mpsc::Receiver<VirtualIpDeviceCommand>,
+        wg: Arc<WireGuardTunnel>,
+    ) -> anyhow::Result<()> {
         // Create CIDR block for source peer IP + each port forward IP
         let addresses = self.addresses();
         let config = Config::new(HardwareAddress::Ip);
@@ -113,11 +158,62 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         // Maps virtual port to its client socket handle
         let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
+        let mut dest_addr_local_port: Mutex<HashMap<String,u16>> = Mutex::new(HashMap::new());
+
         // Data packets to send from a virtual client
         let mut send_queue: HashMap<VirtualPort, VecDeque<Bytes>> = HashMap::new();
 
+        let mut tcp_port_pool = TcpPortPool::new();
+        let mut udp_port_pool = UdpPortPool::new();
+        /*
+            port_forward: PortForwardConfig,
+            source_peer_ip: IpAddr,
+            tcp_port_pool: TcpPortPool,
+            udp_port_pool: UdpPortPool,
+            wg: Arc<WireGuardTunnel>,
+            bus: Bus,
+        */
         loop {
             tokio::select! {
+                cmd = receiver.recv() => match cmd {
+                    Some(VirtualIpDeviceCommand::AddPortForwardConfig(pf)) => {
+
+                        match dest_addr_local_port.lock().await.contains_key(&pf.destination.to_string()) {
+                            true => {
+                                println!("Port already forwarded!");
+                                continue;
+                            },
+                            false => println!("Port forward"),
+
+                        };
+                        
+                        // Virtual Setup
+                        match TcpVirtualInterface::new_server_socket(pf) {
+                            Ok(server_socket) => {
+                                self.sockets.add(server_socket);
+                                self.port_forwards.push(pf);
+
+                                // Add port forward config
+                                let source_peer_ip = self.source_peer_ip.clone();
+                                let tcp_port_pool = tcp_port_pool.clone();
+                                let udp_port_pool = udp_port_pool.clone();
+                                let bus = self.bus.clone();
+                                let wg = Arc::clone(&wg);
+
+                                tokio::spawn(async move {
+                                    let ret = tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg, bus)
+                                        .await
+                                        .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e));
+                                    ret
+                                });
+
+                                dest_addr_local_port.lock().await.insert(pf.destination.to_string(),pf.source.port());
+                            },
+                            Err(_) => {},
+                        };
+                    },
+                    _ => {},
+                },
                 _ = match (next_poll, port_client_handle_map.len()) {
                     (None, 0) => tokio::time::sleep(Duration::MAX),
                     (None, _) => tokio::time::sleep(Duration::ZERO),

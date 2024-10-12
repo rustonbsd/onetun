@@ -31,6 +31,7 @@ smoltcp = { version = "0.11", default-features = false, features = [
 ] }
 bytes = "1"
 base64 = "0.13"
+once_cell = "*"
 
 # forward boringtuns tracing events to log
 tracing = { version = "0.1", default-features = false, features = ["log"] }
@@ -43,6 +44,6 @@ async-recursion = "1.0"
 [features]
 pcap = []
 default = [ "bin" ]
-bin = [ "clap", "pretty_env_logger", "pcap", "tokio/rt-multi-thread" ]
-
+bin = [ "clap", "pretty_env_logger", "pcap", "tokio/rt-multi-thread", ]
+dynamic = []
 [lib]

@@ -2,6 +2,7 @@ use crate::config::PortForwardConfig;
 use crate::events::Event;
 use crate::virtual_device::VirtualIpDevice;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
+use crate::wg::WireGuardTunnel;
 use crate::{Bus, PortProtocol};
 use anyhow::Context;
 use async_trait::async_trait;
@@ -12,11 +13,15 @@ use smoltcp::{
     time::Instant,
     wire::{HardwareAddress, IpAddress, IpCidr, IpVersion},
 };
+use tokio::sync::mpsc;
+use std::sync::Arc;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::IpAddr,
     time::Duration,
 };
+
+use super::VirtualIpDeviceCommand;
 
 const MAX_PACKET: usize = 65536;
 
@@ -97,7 +102,9 @@ impl UdpVirtualInterface {
 
 #[async_trait]
 impl VirtualInterfacePoll for UdpVirtualInterface {
-    async fn poll_loop(mut self, mut device: VirtualIpDevice) -> anyhow::Result<()> {
+    async fn poll_loop(mut self, mut device: VirtualIpDevice,
+        mut receiver: mpsc::Receiver<VirtualIpDeviceCommand>,
+        wg: Arc<WireGuardTunnel>,) -> anyhow::Result<()> {
         // Create CIDR block for source peer IP + each port forward IP
         let addresses = self.addresses();
         let config = Config::new(HardwareAddress::Ip);

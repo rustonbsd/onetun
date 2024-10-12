@@ -1,16 +1,28 @@
 pub mod tcp;
 pub mod udp;
 
-use crate::config::PortProtocol;
+use crate::config::{PortForwardConfig, PortProtocol};
+use crate::wg::WireGuardTunnel;
 use crate::VirtualIpDevice;
 use async_trait::async_trait;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+use tokio::sync::mpsc;
+
+pub enum VirtualIpDeviceCommand {
+    AddPortForwardConfig(PortForwardConfig),
+}
 
 #[async_trait]
 pub trait VirtualInterfacePoll {
     /// Initializes the virtual interface and processes incoming data to be dispatched
     /// to the WireGuard tunnel and to the real client.
-    async fn poll_loop(mut self, device: VirtualIpDevice) -> anyhow::Result<()>;
+    async fn poll_loop(
+        mut self,
+        device: VirtualIpDevice,
+        receiver: mpsc::Receiver<VirtualIpDeviceCommand>,
+        wg: Arc<WireGuardTunnel>,
+    ) -> anyhow::Result<()>;
 }
 
 /// Virtual port.
