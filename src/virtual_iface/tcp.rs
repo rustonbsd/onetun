@@ -205,14 +205,14 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                 match TcpVirtualInterface::new_server_socket(pf) {
                                     Ok(server_socket) => {
                                         {
-                                            println!("try_lock");
+                                            
                                             match sockets.try_lock() {
                                                 Ok(mut sockets) => {
                                                     sockets.add(server_socket);
                                                 },
                                                 Err(_) => {println!("LockFailed");},
                                             };
-                                            println!("end_lock");
+                                            
                                         }
                                         self.port_forwards.push(pf);
 
@@ -257,7 +257,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                     // Find closed sockets
                     port_client_handle_map.retain(|virtual_port, client_handle| {
                         {
-                            println!("try_lock");
+                            
                             let ret = match self.sockets.try_lock() {
                                 Ok(mut sockets) => {
                                     let client_socket = sockets.get_mut::<tcp::Socket>(*client_handle);
@@ -276,13 +276,13 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     println!("LockFailed!");
                                     true},
                             };
-                            println!("end_lock");
+                            
                             ret
                         }
                     });
 
                     {
-                        println!("try_lock");
+                        
                         match self.sockets.try_lock() {
                             Ok(mut sockets) => {
                                 if iface.poll(loop_start, &mut device, &mut sockets) {
@@ -291,11 +291,11 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                             },
                             Err(_) => {println!("LockFailed");},
                         };
-                        println!("end_lock");
+                        
 
                     }
 
-                    println!("try_lock");
+                    
                     match self.sockets.try_lock() {
                         Ok(mut sockets) => {
                     for (virtual_port, client_handle) in port_client_handle_map.iter() {
@@ -346,11 +346,11 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                     }},
                     Err(_) => {println!("LockFailed");},
                 };
-                println!("end_lock");
+                
 
                     // The virtual interface determines the next time to poll (this is to reduce unnecessary polls)
                     {
-                        println!("try_lock");
+                        
                         match self.sockets.try_lock() {
                             Ok(sockets) => {
                                 next_poll = match iface.poll_delay(loop_start, &sockets) {
@@ -364,7 +364,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                             },
                             Err(_) => {println!("LockFailed");},
                         };
-                        println!("end_lock");
+                        
 
                     }
                 }
@@ -372,7 +372,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                     match event {
                         Event::ClientConnectionInitiated(port_forward, virtual_port) => {
                             {
-                                println!("try_lock");
+                                
                                 let ret = match self.sockets.try_lock() {
                                     Ok(mut sockets) => {
                                         let client_socket = TcpVirtualInterface::new_client_socket()?;
@@ -400,7 +400,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     },
                                     Err(_) => {println!("LockFailed");},
                                 };
-                                println!("end_lock");
+                                
                                 ret
                             }
 
@@ -408,7 +408,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         Event::ClientConnectionDropped(virtual_port) => {
                             if let Some(client_handle) = port_client_handle_map.get(&virtual_port) {
                                 {
-                                    println!("try_lock");
+                                    
                                     match self.sockets.try_lock() {
                                         Ok(mut sockets) => {
                                             let client_socket = sockets.get_mut::<tcp::Socket>(*client_handle);
@@ -417,7 +417,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                         },
                                         Err(_) => {println!("LockFailed");},
                                     };
-                                    println!("end_lock");
+                                    
                                 }
                             }
                         }
