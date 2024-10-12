@@ -334,7 +334,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                         }
                                     }
                                 },
-                                Err(_) => {},
+                                Err(_) => {println!("LockFailed");},
                             };
                             
                         }
@@ -353,7 +353,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     None => None,
                                 };
                             },
-                            Err(_) => {},
+                            Err(_) => {println!("LockFailed");},
                         };
                         
                     }
@@ -387,7 +387,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             
                                         next_poll = None;
                                     },
-                                    Err(_) => {}
+                                    Err(_) => {println!("LockFailed");},
                                 }
                             }
                             
@@ -401,7 +401,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                             client_socket.close();
                                             next_poll = None;
                                         },
-                                        Err(_) => {},
+                                        Err(_) => {println!("LockFailed");},
                                     };
                                 }
                             }
