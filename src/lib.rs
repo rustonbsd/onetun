@@ -124,7 +124,7 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
 /// Starts the onetun tunnels in separate tokio tasks.
 ///
 /// Note: This future completes immediately.
-pub async fn start_wg_tcp_only(config: &Config, bus: &Bus) -> anyhow::Result<TcpPortPool> {
+pub async fn start_wg_tcp_only(config: &Config, bus: &Bus) -> anyhow::Result<(TcpPortPool,Arc<WireGuardTunnel>)> {
     // Initialize the port pool for each protocol
     let tcp_port_pool = TcpPortPool::new();
 
@@ -173,5 +173,5 @@ pub async fn start_wg_tcp_only(config: &Config, bus: &Bus) -> anyhow::Result<Tcp
         let iface = TcpVirtualInterface::new(port_forwards, bus, config.source_peer_ip);
         tokio::spawn(async move { iface.poll_loop(device).await });
     }
-    Ok(tcp_port_pool)
+    Ok((tcp_port_pool,wg))
 }
