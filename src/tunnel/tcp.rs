@@ -73,7 +73,7 @@ pub async fn tcp_proxy_server(
 }
 
 /// Handles a new TCP connection with its assigned virtual port.
-async fn handle_tcp_proxy_connection(
+pub async fn handle_tcp_proxy_connection(
     mut socket: TcpStream,
     virtual_port: VirtualPort,
     port_forward: PortForwardConfig,

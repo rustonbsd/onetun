@@ -120,3 +120,58 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// Starts the onetun tunnels in separate tokio tasks.
+///
+/// Note: This future completes immediately.
+pub async fn start_wg_tcp_only(config: &Config, bus: &Bus) -> anyhow::Result<TcpPortPool> {
+    // Initialize the port pool for each protocol
+    let tcp_port_pool = TcpPortPool::new();
+
+    #[cfg(feature = "pcap")]
+    if let Some(pcap_file) = config.pcap_file.clone() {
+        // Start packet capture
+        let bus = bus.clone();
+        tokio::spawn(async move { pcap::capture(pcap_file, bus).await });
+    }
+
+    let wg = WireGuardTunnel::new(&config, bus.clone())
+        .await
+        .context("Failed to initialize WireGuard tunnel")?;
+    let wg = Arc::new(wg);
+
+    {
+        // Start routine task for WireGuard
+        let wg = wg.clone();
+        tokio::spawn(async move { wg.routine_task().await });
+    }
+
+    {
+        // Start consumption task for WireGuard
+        let wg = wg.clone();
+        tokio::spawn(Box::pin(async move { wg.consume_task().await }));
+    }
+
+    {
+        // Start production task for WireGuard
+        let wg = wg.clone();
+        tokio::spawn(async move { wg.produce_task().await });
+    }
+
+    if config
+        .port_forwards
+        .iter()
+        .any(|pf| pf.protocol == PortProtocol::Tcp)
+    {
+        // TCP device
+        let bus = bus.clone();
+        let device =
+            VirtualIpDevice::new(PortProtocol::Tcp, bus.clone(), config.max_transmission_unit);
+
+        // Start TCP Virtual Interface
+        let port_forwards = config.port_forwards.clone();
+        let iface = TcpVirtualInterface::new(port_forwards, bus, config.source_peer_ip);
+        tokio::spawn(async move { iface.poll_loop(device).await });
+    }
+    Ok(tcp_port_pool)
+}
