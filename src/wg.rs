@@ -125,6 +125,7 @@ impl WireGuardTunnel {
                 match self.udp.send_to(packet, self.endpoint).await {
                     Ok(_) => {println!("udp.send_to routine: {}",self.endpoint);}
                     Err(e) => {
+                        println!("failed udp.send_to routine: {}",self.endpoint);
                         error!(
                             "Failed to send routine packet to WireGuard endpoint: {:?}",
                             e
@@ -190,6 +191,7 @@ impl WireGuardTunnel {
                     match self.udp.send_to(packet, self.endpoint).await {
                         Ok(_) => {println!("udp.send_to consume: {}",self.endpoint);}
                         Err(e) => {
+                            println!("failed udp.send_to consume: {}",self.endpoint);
                             error!("Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}", e);
                             continue;
                         }
@@ -202,6 +204,7 @@ impl WireGuardTunnel {
                                 match self.udp.send_to(packet, self.endpoint).await {
                                     Ok(_) => {println!("udp.send_to consume lvl2: {}",self.endpoint);}
                                     Err(e) => {
+                                        println!("failed udp.send_to consume lvl2: {}",self.endpoint);
                                         error!("Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}", e);
                                         break;
                                     }
