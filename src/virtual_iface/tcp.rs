@@ -161,6 +161,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                             }
                                         }
                                         Err(e) => {
+                                            println!("Failed to send slice via virtual client socket: {:?}", e);
                                             error!(
                                                 "Failed to send slice via virtual client socket: {:?}", e
                                             );
@@ -180,6 +181,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     }
                                 }
                                 Err(e) => {
+                                    println!("Failed to read from virtual client socket: {:?}", e);
                                     error!(
                                         "Failed to read from virtual client socket: {:?}", e
                                     );
