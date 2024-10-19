@@ -91,8 +91,8 @@ pub async fn handle_tcp_proxy_connection(
                         match socket.try_read_buf(&mut buffer) {
                             Ok(size) if size > 0 => {
                                 let data = Vec::from(&buffer[..size]);
-                                println!("{}",String::from_utf8_lossy(&buffer));
-                                println!("Sending localdata: {}",buffer.len());
+                                //println!("{}",String::from_utf8_lossy(&buffer));
+                                //println!("Sending localdata: {}",buffer.len());
                                 endpoint.send(Event::LocalData(port_forward, virtual_port, data.into()));
                                 // Reset buffer
                                 buffer.clear();

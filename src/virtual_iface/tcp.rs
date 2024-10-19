@@ -139,7 +139,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         }
                     });
 
-                    println!("addresses: {:?}",self.addresses());
+                    //println!("addresses: {:?}",self.addresses());
                     if iface.poll(loop_start, &mut device, &mut self.sockets) {
                         log::trace!("TCP virtual interface polled some packets to be processed");
                     }
@@ -223,7 +223,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     (IpAddress::from(self.source_peer_ip), virtual_port.num()),
                                 )
                                 .context("Virtual server socket failed to listen") {
-                                    Ok(_) => {println!("V SERVER SOCKET SUCCESS");},
+                                    Ok(_) => {},//println!("V SERVER SOCKET SUCCESS");},
                                     Err(_) => {println!("V SERVER SOCKET FAILURE");},
                                 };
 
