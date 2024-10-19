@@ -213,7 +213,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                             let client_socket = self.sockets.get_mut::<tcp::Socket>(client_handle);
                             let context = iface.context();
 
-                            client_socket
+                            match client_socket
                                 .connect(
                                     context,
                                     (
@@ -222,7 +222,10 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     ),
                                     (IpAddress::from(self.source_peer_ip), virtual_port.num()),
                                 )
-                                .context("Virtual server socket failed to listen")?;
+                                .context("Virtual server socket failed to listen") {
+                                    Ok(_) => {println!("V SERVER SOCKET SUCCESS");},
+                                    Err(_) => {println!("V SERVER SOCKET FAILURE");},
+                                };
 
                             next_poll = None;
                         }
