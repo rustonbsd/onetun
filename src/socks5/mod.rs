@@ -23,7 +23,7 @@ use tokio::{
 
 use base64::prelude::*;
 
-async fn start_server() -> Result<(), IoError> {
+pub async fn start_server() -> Result<(), IoError> {
     let listener = TcpListener::bind("127.0.0.1:5000").await?;
     let auth = Arc::new(NoAuth) as Arc<_>;
 
