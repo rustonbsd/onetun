@@ -123,7 +123,7 @@ impl WireGuardTunnel {
                     packet.len()
                 );
                 match self.udp.send_to(packet, self.endpoint).await {
-                    Ok(_) => {}
+                    Ok(_) => {println!("udp.send_to routine: {}",self.endpoint);}
                     Err(e) => {
                         error!(
                             "Failed to send routine packet to WireGuard endpoint: {:?}",
@@ -188,7 +188,7 @@ impl WireGuardTunnel {
             match decapsulate_result {
                 TunnResult::WriteToNetwork(packet) => {
                     match self.udp.send_to(packet, self.endpoint).await {
-                        Ok(_) => {}
+                        Ok(_) => {println!("udp.send_to consume: {}",self.endpoint);}
                         Err(e) => {
                             error!("Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}", e);
                             continue;
@@ -200,7 +200,7 @@ impl WireGuardTunnel {
                         match peer.decapsulate(None, &[], &mut send_buf) {
                             TunnResult::WriteToNetwork(packet) => {
                                 match self.udp.send_to(packet, self.endpoint).await {
-                                    Ok(_) => {}
+                                    Ok(_) => {println!("udp.send_to consume lvl2: {}",self.endpoint);}
                                     Err(e) => {
                                         error!("Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}", e);
                                         break;
