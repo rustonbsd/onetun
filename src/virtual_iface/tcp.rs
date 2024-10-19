@@ -150,6 +150,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                 let to_transfer = send_queue.pop_front();
                                 if let Some(to_transfer_slice) = to_transfer.as_deref() {
                                     let total = to_transfer_slice.len();
+                                    println!("Send Queue {}",to_transfer_slice.len());
                                     match client_socket.send_slice(to_transfer_slice) {
                                         Ok(sent) => {
                                             if sent < total {
