@@ -23,6 +23,7 @@ pub mod tunnel;
 pub mod virtual_device;
 pub mod virtual_iface;
 pub mod wg;
+pub mod socks5;
 
 /// Starts the onetun tunnels in separate tokio tasks.
 ///
