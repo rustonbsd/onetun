@@ -139,6 +139,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         }
                     });
 
+                    println!("addresses: {:?}",self.addresses());
                     if iface.poll(loop_start, &mut device, &mut self.sockets) {
                         log::trace!("TCP virtual interface polled some packets to be processed");
                     }
