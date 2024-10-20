@@ -1,17 +1,20 @@
 use std::collections::VecDeque;
+use std::net::SocketAddr;
 use std::ops::Range;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context;
+use anyhow::{bail, Context, Error};
 use bytes::{buf, BytesMut};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::io::AsyncWriteExt;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 
 use crate::config::{PortForwardConfig, PortProtocol};
 use crate::events::{Bus, Event};
+use crate::virtual_iface::tcp::TcpVirtualInterface;
 use crate::virtual_iface::VirtualPort;
 
 const MAX_PACKET: usize = 65536;
@@ -69,6 +72,36 @@ pub async fn tcp_proxy_server(
             tokio::time::sleep(Duration::from_millis(100)).await; // Make sure the other tasks have time to process the event
             port_pool.release(virtual_port).await;
         });
+    }
+}
+
+
+/// Handle connection attempt without a preexisting tcp connection
+pub async fn new_tcp_proxy_connection(
+    virtual_port: VirtualPort,
+    port_forward: PortForwardConfig,
+    bus: Bus,
+) -> anyhow::Result<TcpStream,Error> {
+    let single_use_tcp_listener = TcpListener::bind(SocketAddr::from_str("0.0.0.0:0").unwrap()).await.unwrap();
+    let local_addr = single_use_tcp_listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        match single_use_tcp_listener.accept().await {
+            Ok((tcp_stream, _)) => {
+                match handle_tcp_proxy_connection(tcp_stream, virtual_port, port_forward, bus).await {
+                    Ok(_) => {},
+                    Err(_) => {},
+                }
+            },
+            Err(_) => {
+                println!("Failed to create tcp listener");
+            },
+        };
+    });
+
+    match TcpStream::connect(local_addr).await {
+        Ok(tcp_stream) => Ok(tcp_stream),
+        Err(err) => {println!("failed to connect tcp stream: {err}"); bail!("failed to connect tcp stream")},
     }
 }
 
