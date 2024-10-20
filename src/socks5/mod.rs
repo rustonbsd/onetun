@@ -33,13 +33,13 @@ pub async fn start_server() -> Result<(), IoError> {
 
     BASE64_STANDARD
         .decode_slice(
-            "yOqQnKw79V1UCist9L5QJhwhG5S/pUUQ4CGhDLOdHWw=",
+            "CK6RJoOM3fmUeVYUFomyQ3UDZtCSbqOMvotj4ItxmXc=",
             &mut priv_key_buf,
         )
         .unwrap();
     BASE64_STANDARD
         .decode_slice(
-            "8ov1Ws0ut3ixWDh9Chp7/WLVn9qC6/WVHtcBcuWBlgo=",
+            "s1c/NsfnqnwQSxao70DY4Co69AFT9e0h88IFuMD5mjs=",
             &mut pub_key_buf,
         )
         .unwrap();
@@ -68,7 +68,7 @@ pub async fn start_server() -> Result<(), IoError> {
         private_key: Arc::new(crate::config::StaticSecret::from(priv_key_buf)),
         endpoint_public_key: Arc::new(crate::config::PublicKey::from(pub_key_buf)),
         preshared_key: None,
-        endpoint_addr: SocketAddr::new(IpAddr::from_str("193.32.248.67").unwrap(), 51820),
+        endpoint_addr: SocketAddr::new(IpAddr::from_str("185.213.155.74").unwrap(), 51820),
         endpoint_bind_addr: SocketAddr::new(IpAddr::from_str("0.0.0.0").unwrap(), 0),
         source_peer_ip: IpAddr::from_str("10.72.37.77").unwrap(),
         keepalive_seconds: Some(15),
