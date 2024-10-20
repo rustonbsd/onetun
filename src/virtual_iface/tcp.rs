@@ -212,6 +212,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                             let client_socket = self.sockets.get_mut::<tcp::Socket>(client_handle);
                             let context = iface.context();
 
+                            println!("Port Forward: {}",virtual_port.num());
                             match client_socket
                                 .connect(
                                     context,
