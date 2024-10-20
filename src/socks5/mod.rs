@@ -72,7 +72,7 @@ pub async fn start_server() -> Result<(), IoError> {
         endpoint_bind_addr: SocketAddr::new(IpAddr::from_str("0.0.0.0").unwrap(), 0),
         source_peer_ip: IpAddr::from_str("10.72.37.77").unwrap(),
         keepalive_seconds: Some(15),
-        max_transmission_unit: 1420,
+        max_transmission_unit: 1360,
         log: "".to_string(),
         warnings: vec![],
         pcap_file: None,
