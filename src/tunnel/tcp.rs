@@ -86,7 +86,7 @@ pub async fn new_tcp_proxy_connection(
 ) -> anyhow::Result<TcpStream,Error> {
     let single_use_tcp_listener = TcpListener::bind(SocketAddr::from_str("0.0.0.0:0").unwrap()).await.unwrap();
     let local_addr = single_use_tcp_listener.local_addr().unwrap();
-    println!("local_address: {local_addr}");
+    println!("local_address: {local_addr} {}",port_forward.destination);
 
     tokio::spawn(async move {
         match single_use_tcp_listener.accept().await {
