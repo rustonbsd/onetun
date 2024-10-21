@@ -10,6 +10,7 @@ use anyhow::{bail, Context, Error};
 use bytes::{buf, BytesMut};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use smoltcp::socket::tcp::Socket;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 
@@ -103,7 +104,7 @@ pub async fn new_tcp_proxy_connection(
 
     sleep(Duration::from_millis(100));
 
-    match TcpStream::connect(local_addr).await {
+    match TcpStream::connect(SocketAddr::from_str(&format!("127.0.0.1:{}",local_addr.port())).unwrap()).await {
         Ok(tcp_stream) => Ok(tcp_stream),
         Err(err) => {println!("failed to connect tcp stream: {err}"); bail!("failed to connect tcp stream")},
     }
