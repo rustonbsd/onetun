@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Error};
 use bytes::{buf, BytesMut};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use smoltcp::socket::tcp::Socket;
+use smoltcp::socket::tcp::{self, Socket};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 
@@ -89,24 +89,21 @@ pub async fn new_tcp_proxy_connection(
     println!("local_address: {local_addr} {}",port_forward.destination);
 
     tokio::spawn(async move {
-        match single_use_tcp_listener.accept().await {
-            Ok((tcp_stream, _)) => {
-                match handle_tcp_proxy_connection(tcp_stream, virtual_port, port_forward, bus).await {
-                    Ok(_) => {},
-                    Err(_) => {},
-                }
+        sleep(Duration::from_millis(100));
+        match TcpStream::connect(SocketAddr::from_str(&format!("127.0.0.1:{}",local_addr.port())).unwrap()).await {
+            Ok(tcp_stream) => match handle_tcp_proxy_connection(tcp_stream, virtual_port, port_forward, bus).await {
+                Ok(_) => Ok(()),
+                Err(_) => bail!("errorororororo"),
             },
-            Err(_) => {
-                println!("Failed to create tcp listener");
-            },
-        };
+            Err(err) => {println!("failed to connect tcp stream: {err}"); bail!("failed to connect tcp stream")},
+        }
     });
-
-    sleep(Duration::from_millis(100));
-
-    match TcpStream::connect(SocketAddr::from_str(&format!("127.0.0.1:{}",local_addr.port())).unwrap()).await {
-        Ok(tcp_stream) => Ok(tcp_stream),
-        Err(err) => {println!("failed to connect tcp stream: {err}"); bail!("failed to connect tcp stream")},
+    match single_use_tcp_listener.accept().await {
+        Ok((tcp_stream, _)) => Ok(tcp_stream),
+        Err(_) => {
+            println!("Failed to create tcp listener");
+            bail!("failed to create tcp listener")
+        },
     }
 }
 
