@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Error};
@@ -84,6 +85,7 @@ pub async fn new_tcp_proxy_connection(
 ) -> anyhow::Result<TcpStream,Error> {
     let single_use_tcp_listener = TcpListener::bind(SocketAddr::from_str("0.0.0.0:0").unwrap()).await.unwrap();
     let local_addr = single_use_tcp_listener.local_addr().unwrap();
+    println!("local_address: {local_addr}");
 
     tokio::spawn(async move {
         match single_use_tcp_listener.accept().await {
@@ -98,6 +100,8 @@ pub async fn new_tcp_proxy_connection(
             },
         };
     });
+
+    sleep(Duration::from_millis(100));
 
     match TcpStream::connect(local_addr).await {
         Ok(tcp_stream) => Ok(tcp_stream),
